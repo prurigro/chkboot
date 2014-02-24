@@ -35,7 +35,7 @@ DISKHEAD_LAST="${CHKBOOT_DATA}/DISKHEAD-last"
 CHANGES_ALERT="${CHKBOOT_DATA}/${CHANGES_ALERT}"
 CHANGES_LOG="${CHKBOOT_DATA}/${CHANGES_LOG}"
 
-if [ ! -z "$1" ]; then
+if [ -n "$1" ]; then
     if [ "$1" = "-u" -o "$1" = "--update" ]; then
         CHANGED="-1"
     elif [ "$1" = "-h" -o "$1" = "--help" ]; then
@@ -45,22 +45,22 @@ if [ ! -z "$1" ]; then
         echo -e "Invalid argument: ${1}"
         help
         exit 1
-    fi    
+    fi
 else
     CHANGED="0"
 fi
 
 install -d "$CHKBOOT_DATA"
 
-# delete the previous 
-if [[ -s "${CHANGES_ALERT}" ]]; then
+# delete the previous
+if [[ -s "$CHANGES_ALERT" ]]; then
     # restore /etc/issue if it's been modified
     if [ ! $(grep -c "CHKBOOT ALERT" /etc/issue) = 0 ]; then
         sed -i ':a;N;$!ba;s/\n/CHKBOOT_TEMPNEWLINE/g;s:CHKBOOT_TEMPNEWLINE\x1B\[[0-9;]*[mK].*::g;s/CHKBOOT_TEMPNEWLINE/\n/g' /etc/issue
     fi
 
     # reset the changes being tracked by removing the file containing them (the log still exists)
-    rm "${CHANGES_ALERT}"
+    rm "$CHANGES_ALERT"
 fi
 
 # making a copy of the head of the disk
@@ -71,26 +71,24 @@ pushd "$BOOTDIR" > /dev/null 2>&1
     files=`echo $files | sed "s/.\/grub\/grubenv//"` # remove files that should be skipped
 
     # generate hashes of each file
-    for fname in $files; do
+    for fname in "$files"; do
         hash=`sha256sum -b $fname | awk '{print $1}'`
         inode=`stat --printf="%i\n" $fname`
         blcks=`debugfs -R "stat $fname"  $BOOTPART 2>/dev/null | grep -A 1 -e 'BLOCKS:' -e 'EXTENTS' | tail -1`
         echo "$fname $inode $hash $blcks"
-    done > $BOOTFILES
+    done > "$BOOTFILES"
 
     [ -s "$BOOTFILES" ] || ( exit 0 )
-    if [ ! -s "$DISKHEAD_LAST" ]; then ln -s -f $DISKHEAD $DISKHEAD_LAST; fi
-    if [ ! -s "$BOOTFILES_LAST" ]; then ln -s -f $BOOTFILES $BOOTFILES_LAST; exit 0; fi
+    if [ ! -s "$DISKHEAD_LAST" ]; then ln -s -f "$DISKHEAD" "$DISKHEAD_LAST"; fi
+    if [ ! -s "$BOOTFILES_LAST" ]; then ln -s -f "$BOOTFILES" "$BOOTFILES_LAST"; exit 0; fi
 
-    if [ ! "$CHANGED" = "-1" ]; then
-        ( diff $BOOTFILES_LAST $BOOTFILES >> "${CHANGES_ALERT}-now" ) || CHANGED="1"
-        ( diff $DISKHEAD_LAST $DISKHEAD >> "${CHANGES_ALERT}-now" ) || CHANGED="1"
+    if [ "$CHANGED" != "-1" ]; then
+        ( diff "$BOOTFILES_LAST" "$BOOTFILES" >> "${CHANGES_ALERT}-now" ) || CHANGED="1"
+        ( diff "$DISKHEAD_LAST" "$DISKHEAD" >> "${CHANGES_ALERT}-now" ) || CHANGED="1"
     fi
 
     # changes detected, create the changes alert file
-    if [ ! $CHANGED = "1" ] ; then
-        rm -f $DISKHEAD "${CHANGES_ALERT}-now" $BOOTFILES
-    else
+    if [ "$CHANGED" = "1" ] ; then
         # create the changes alert file with a heading and the date and the list of changed files
         echo -e "List of changed files on `date`:\n" > "${CHANGES_ALERT}"
         cat "${CHANGES_ALERT}-now" >> "$CHANGES_ALERT"
@@ -100,8 +98,10 @@ pushd "$BOOTDIR" > /dev/null 2>&1
         echo >> "$CHANGES_LOG"
 
         # set the latest hashes to the old ones for next time then exit
-        ln -s -f $BOOTFILES $BOOTFILES_LAST
-        ln -s -f $DISKHEAD $DISKHEAD_LAST
+        ln -s -f "$BOOTFILES" "$BOOTFILES_LAST"
+        ln -s -f "$DISKHEAD" "$DISKHEAD_LAST"
         exit 1
+    else
+        rm -f "$DISKHEAD" "${CHANGES_ALERT}-now" "$BOOTFILES"
     fi
 popd > /dev/null 2>&1
